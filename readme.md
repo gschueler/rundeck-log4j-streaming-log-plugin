@@ -11,9 +11,9 @@ Configure in `framework.properties` to set the logger name:
 If necessary modify these config values:
 
 * `loggername` : name of log4j logger to use
-* `jobsOnly`: 'true' means only log events for jobs, not adhoc executions
-* `includeLogs`: 'true' means include output log messages from the execution
-* `logNewNode`: 'true' means log when a new node is seen for the execution
+* `jobsOnly`: 'true' means only log events for jobs, not adhoc executions ('true' is default)
+* `includeLogs`: 'true' means include output log messages from the execution ('true' is default)
+* `logNewNode`: 'true' means log when a new node is seen for the execution ('true' is default)
 
 Configure log4j.properties:
 
@@ -24,11 +24,12 @@ Configure log4j.properties:
     log4j.appender.executionevents.file=/var/log/rundeck/rundeck.executionevents.log
     log4j.appender.executionevents.append=true
     log4j.appender.executionevents.layout=org.apache.log4j.PatternLayout
-    log4j.appender.executionevents.layout.ConversionPattern=%d{ISO8601} execution: %X{execid} (%X{event}, %X{nodename}) %X{group}/%X{name} [%X{id}] - %m%n
+    log4j.appender.executionevents.layout.ConversionPattern=%d{ISO8601} project: %X{project} execution: %X{execid} (%X{event}, %X{nodename}) %X{group}/%X{name} [%X{id}] - %m%n
 
 Context properties available in log4j MDC:
 
 * execid - execution ID
+* project - project name
 * event - one of 'start','end','node','log'
 * nodename - name of new node seen for a 'node' event
 * group - job group
