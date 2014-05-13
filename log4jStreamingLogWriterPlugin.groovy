@@ -5,23 +5,30 @@ import org.apache.log4j.Logger
 import org.apache.log4j.MDC
 
 /**
- * This example is a minimal streaming log writer plugin for Rundeck
+ * A streaming log writer plugin which outputs events to log4j.
+ * This plugin only outputs these messages:
+ * * job start
+ * * job end
+ * * node step started on a new node.
  */
 rundeckPlugin(StreamingLogWriterPlugin){
     configuration{
         loggername="com.test.log.stream"
-        loggername required:true, description: "Name of logger"
-        //if true, log only output from jobs, and not adhoc commands
+        loggername required:true, description: "Name of log4j logger to use, default: com.test.log.stream"
+        
         jobsOnly=true
-        //if true, log output lines, otherwise skip 
+        jobsOnly required:false, description: "if true, log only output from jobs, and not adhoc commands"
+        
         includeLogs=true
-        //if true, log when a new node is seen for this execution
+        includeLogs required:false, description: "if true, log output lines, otherwise skip"
+        
         logNewNode=true
+        logNewNode required:false, description: "if true, log when a new node is seen for this execution"
     }
 
     //set log4j MDC with the map data
     def setMDC={map->
-        map.each(MDC.&put)
+        map.findAll{it.value}.each(MDC.&put)
     }
     //remove map keys from MDC
     def clearMDC={map->
@@ -35,61 +42,61 @@ rundeckPlugin(StreamingLogWriterPlugin){
     }
 
     /**
-     * The "open" closure is called to open the stream for writing events.
-     * It is passed two map arguments, the execution data, and the plugin configuration data.
-     *
-     * It should return a Map containing the stream context, which will be passed back for later
-     * calls to the "addEvent" closure.
+     * Open is called when execution is started.  log start event and set up context
      */
     open { Map execution, Map config ->
-        def ctx=[execution:execution,logger:logger,nodeset:[],config:config]
         //in this example we open a file output stream to store data in JSON format.
         Logger logger = Logger.getLogger(config.loggername)
+        def ctx=[execution:execution,logger:logger,nodeset:[],config:config]
         if(!config.jobsOnly || execution.id){
-            logInfo(execution+['event':'start'],logger,"START: "+execution)
+            logInfo(execution+['event':'start'],logger,"START")
         }
         
         //return context map for the plugin to reuse later
-        ctx
+        return ctx
     }
 
     /**
-     * "addEvent" closure is called to append a new event to the stream.  
-     * It is passed the Map of stream context created in the "open" closure, and a LogEvent.
-     * 
+     * new log event
      */
     addEvent { Map context, LogEvent event->
-        if(event.eventType in [null,'log']){
-            //any event with 'log' (or null since it defaults to log), will be ignored
-            if(!context.config.includeLogs){
-                return   
-            }
+
+        //any event with 'log' (or null since it defaults to log), will be ignored
+        if((event.eventType in [null,'log']) && !context.config.includeLogs){
+            return   
         }
+        //only interested in events for job executions
         if(context.config.jobsOnly && !context.execution.id){
             return
         }
+
+        //determine if a new node is being run on
         def newnode=null
-        if(event.eventType=='nodebegin'){
-            if(event.metadata.node){
-                if(!context.nodeset.contains(event.metadata.node)){
-                    context.nodeset<<event.metadata.node
-                    newnode=event.metadata.node
-                }
-            }
+        if(event.eventType=='nodebegin' && event.metadata.node && !context.nodeset.contains(event.metadata.node)){
+            context.nodeset<<event.metadata.node
+            newnode=event.metadata.node
         }
+
         def data=[loglevel:event.loglevel.toString(), eventType:event.eventType]
+
+        //log new node event
         if(newnode && context.config.logNewNode){
-            logInfo(data+event.metadata+['event':'node'],logger,"NODE: "+newnode)
+            logInfo(context.execution+data+event.metadata+['event':'node',nodename:newnode],context.logger,newnode)
         }
-        if(event.eventType in [null,'log'] && context.config.includeLogs){
-            logInfo(data+event.metadata+['event':'log'],logger,event.message)
+
+        //if includeLogs, log the message
+        if((event.eventType in [null,'log']) && context.config.includeLogs){
+            logInfo(context.execution+data+event.metadata+['event':'log'],context.logger,event.message)
         }
     }
+
+    /**
+     * close: log the execution end event.
+     */
     close { Map context->
-        if(context.config.jobsOnly && !context.execution.id){
-            return
-        }
         
-        logInfo(context.subMap(['execution'])+['event':'end'],logger,"END: "+(context.execution))
+        if(!context.config.jobsOnly || context.execution.id){
+            logInfo(context.execution+['event':'end'],context.logger,"END")
+        }
     }
 }
